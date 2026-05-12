@@ -6,28 +6,46 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
-def run_rag_engine(bot_id, pdf_text, user_query, rules, model_choice):
-    # 1. Local Chunking
-    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
-    chunks = splitter.split_text(pdf_text)
+# --- PART A: ADDING KNOWLEDGE ---
+def ingest_pdf_to_vector(bot_id, pdf_text):
+    # 1. Chunk the text
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    splits = splitter.split_text(pdf_text)
     
-    # 2. Local Embedding (Free, stays on your Mac)
+    # 2. Local Embedding
+    # This points to a folder NAMED after the bot_id (e.g., ./knowledge_base/meezan-bank)
+    persist_dir = f"./knowledge_base/{bot_id}"
+    
     vector_db = Chroma.from_texts(
-        texts=chunks,
+        texts=splits,
         embedding=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
-        persist_directory=f"./knowledge_base/{bot_id}"
+        persist_directory=persist_dir
+    )
+    return True
+
+# --- PART B: ASKING QUESTIONS ---
+def run_ai_logic(bot_id, question, instructions, model_choice):
+    persist_dir = f"./knowledge_base/{bot_id}"
+    
+    # Load ONLY this bot's specific vector database
+    if not os.path.exists(persist_dir):
+        return "This bot has no knowledge base yet. Please upload a PDF first."
+
+    vector_db = Chroma(
+        persist_directory=persist_dir,
+        embedding_function=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     )
     
-    # 3. Smart Search (Snippet Only)
-    relevant_docs = vector_db.similarity_search(user_query, k=3)
-    context = "\n".join([d.page_content for d in relevant_docs])
+    # Search for relevant snippets
+    docs = vector_db.similarity_search(question, k=4)
+    context = "\n".join([d.page_content for d in docs])
     
-    # 4. Multi-Model Call
-    prompt = [SystemMessage(content=f"{rules}\nContext:\n{context}"), HumanMessage(content=user_query)]
+    system_prompt = f"{instructions}\n\nRELEVANT DOCUMENT CONTEXT:\n{context}"
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=question)]
     
-    if "Groq" in model_choice:
+    if "Groq" in str(model_choice):
         llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=os.getenv("GROQ_API_KEY"))
     else:
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=os.getenv("GEMINI_API_KEY"))
     
-    return llm.invoke(prompt).content
+    return llm.invoke(messages).content
