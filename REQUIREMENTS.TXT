@@ -1,0 +1,23 @@
+# API & Web Server
+fastapi
+uvicorn
+python-multipart
+requests
+
+# Database
+sqlalchemy
+
+# AI & LLM (Groq + Gemini)
+langchain-groq
+langchain-google-genai
+langchain-core
+
+# RAG, Shredding & Embeddings
+langchain-text-splitters
+langchain-huggingface
+langchain-chroma
+PyPDF2
+
+# Environment & UI
+python-dotenv
+streamlit
